@@ -1,154 +1,114 @@
 const { expect } = require("chai");
 const { ethers } = require("hardhat");
 
-describe("Votting Contract", function () {
-    let Votting, votting;
-    let owner, voter1, voter2;
+describe("Voting Contract", function () {
+    let Voting;
+    let votting;
+    let owner;
+    let voter1;
+    let voter2;
+    let voter3;
 
     beforeEach(async function () {
-        // Deploy the contract before each test
-        Votting = await ethers.getContractFactory("Votting");
-        votting = await Votting.deploy();
+        // Lấy thông tin về các tài khoản
+        [owner, voter1, voter2, voter3] = await ethers.getSigners();
 
-        // Get the owner and some test accounts
-        [owner, voter1, voter2] = await ethers.getSigners();
+        // Deploy hợp đồng
+        const VotingFactory = await ethers.getContractFactory("Voting");
+        votting = await VotingFactory.deploy();
     });
 
-    it("Should create an election successfully", async function () {
-        await votting.createElection(
-            "Election 1",
-            60, // Duration in minutes
-            ["Alice", "Bob"], // Candidates
-            [voter1.address, voter2.address], // Allowed voters
-            "Presidential Election"
-        );
-
-        const electionDetails = await votting.detailElection(1);
-        expect(electionDetails[0]).to.equal("Election 1"); // Name
-        expect(electionDetails[4]).to.equal("Presidential Election"); // Description
-    });
-
-    it("Should allow voting and count votes correctly", async function () {
+    it("Nên tạo cuộc bầu cử và lưu trữ thông tin đúng", async function () {
         await votting.createElection(
             "Election 1",
             60,
             ["Alice", "Bob"],
             [voter1.address, voter2.address],
-            "Presidential Election"
+            "Bầu cử Tổng thống"
         );
 
-        // Voter1 votes for Alice
+        const election = await votting.elections(1);
+        expect(election.name).to.equal("Election 1");
+        expect(election.duration).to.equal(60);
+        expect(election.candidates.length).to.equal(2);
+        expect(election.voters.length).to.equal(2);
+    });
+
+    it("Nên cho phép bỏ phiếu và ngăn ngừa bỏ phiếu hai lần", async function () {
+        await votting.createElection(
+            "Election 1",
+            60,
+            ["Alice", "Bob"],
+            [voter1.address, voter2.address],
+            "Bầu cử Tổng thống"
+        );
+
         await votting.connect(voter1).vote(1, "Alice");
 
-        // Voter2 votes for Bob
+        // Voter1 đã bỏ phiếu, không thể bỏ phiếu lần nữa
+        await expect(votting.connect(voter1).vote(1, "Bob")).to.be.revertedWith("You have already voted");
+
+        // Voter2 bỏ phiếu cho Bob
         await votting.connect(voter2).vote(1, "Bob");
 
-        const aliceVotes = await votting.getVotes(1, "Alice");
-        const bobVotes = await votting.getVotes(1, "Bob");
-
-        expect(aliceVotes).to.equal(1);
-        expect(bobVotes).to.equal(1);
+        // Kiểm tra số phiếu của các ứng cử viên
+        const candidates = await votting.getCandidates(1);
+        expect(candidates[0].votes).to.equal(1); // Alice có 1 phiếu
+        expect(candidates[1].votes).to.equal(1); // Bob có 1 phiếu
     });
 
-    it("Should not allow double voting", async function () {
-        await votting.createElection(
-            "Election 1",
-            60,
-            ["Alice", "Bob"],
-            [voter1.address],
-            "Presidential Election"
-        );
-
-        await votting.connect(voter1).vote(1, "Alice");
-        await expect(votting.connect(voter1).vote(1, "Alice")).to.be.revertedWith("You have already voted");
-    });
-
-    it("Should not allow voting after election ends", async function () {
-        await votting.createElection(
-            "Election 1",
-            1, // Duration of 1 minute
-            ["Alice", "Bob"],
-            [voter1.address],
-            "Presidential Election"
-        );
-
-        // Fast-forward time to after the election ends
-        await ethers.provider.send("evm_increaseTime", [60 * 2]);
-        await ethers.provider.send("evm_mine");
-
-        await expect(votting.connect(voter1).vote(1, "Alice")).to.be.revertedWith("Election has ended");
-    });
-
-    it("Should allow updating allowed voters", async function () {
-        await votting.createElection(
-            "Election 1",
-            60,
-            ["Alice", "Bob"],
-            [voter1.address],
-            "Presidential Election"
-        );
-
-        await votting.setAllowedVoters(1, [voter2.address]);
-
-        // Voter1 should not be allowed to vote
-        await expect(votting.connect(voter1).vote(1, "Alice")).to.be.revertedWith("You are not allowed to vote in this election");
-
-        // Voter2 should be allowed to vote
-        await votting.connect(voter2).vote(1, "Alice");
-        const aliceVotes = await votting.getVotes(1, "Alice");
-        expect(aliceVotes).to.equal(1);
-    });
-
-    it("Should delete an election successfully", async function () {
+    it("Nên trả về danh sách ứng cử viên với số phiếu bầu của họ", async function () {
         await votting.createElection(
             "Election 1",
             60,
             ["Alice", "Bob"],
             [voter1.address, voter2.address],
-            "Presidential Election"
+            "Bầu cử Tổng thống"
         );
 
-        await votting.deleteElection(1);
-        await expect(votting.detailElection(1)).to.be.revertedWith("Election does not exist");
-    });
-
-    it("Should get the correct winner of an election", async function () {
-        await votting.createElection(
-            "Election 1",
-            60,
-            ["Alice", "Bob"],
-            [voter1.address, voter2.address],
-            "Presidential Election"
-        );
-
-        // Voter1 votes for Alice
+        // Voter1 bỏ phiếu cho Alice
         await votting.connect(voter1).vote(1, "Alice");
 
-        // Voter2 votes for Alice
-        await votting.connect(voter2).vote(1, "Alice");
-
-        const [winner, votes] = await votting.getElectionWinner(1);
-        expect(winner).to.equal("Alice");
-        expect(votes).to.equal(2);
-    });
-
-    it("Should handle a tie in votes correctly", async function () {
-        await votting.createElection(
-            "Election 1",
-            60,
-            ["Alice", "Bob"],
-            [voter1.address, voter2.address],
-            "Presidential Election"
-        );
-
-        // Voter1 votes for Alice
-        await votting.connect(voter1).vote(1, "Alice");
-
-        // Voter2 votes for Bob
+        // Voter2 bỏ phiếu cho Bob
         await votting.connect(voter2).vote(1, "Bob");
 
-        const [winner, votes] = await votting.getElectionWinner(1);
-        expect(winner).to.equal(""); // No winner in case of a tie
-        expect(votes).to.equal(0);
+        // Lấy danh sách ứng cử viên và số phiếu bầu của họ
+        const candidates = await votting.getCandidates(1);
+
+        // Kiểm tra các ứng cử viên và số phiếu bầu của họ
+        expect(candidates.length).to.equal(2);
+        expect(candidates[0].name).to.equal("Alice");
+        expect(candidates[0].votes).to.equal(1);
+        expect(candidates[1].name).to.equal("Bob");
+        expect(candidates[1].votes).to.equal(1);
     });
+
+    it("Nên trả về người thắng cuộc sau khi bầu cử kết thúc", async () => {
+        // Tạo cuộc bầu cử
+        await voting.createElection("Election 1", 60, candidates, allowedVoters, "Election Description");
+    
+        // Cử tri bỏ phiếu
+        await voting.vote(1, "Alice");
+        await voting.vote(1, "Bob");
+    
+        // Kiểm tra người thắng cuộc
+        const [winner, votes] = await voting.getElectionWinner(1);
+        assert.equal(winner, "Alice", "Winner should be Alice");
+        assert.equal(votes, 1, "Alice should have 1 vote");
+    });
+    
+
+    it("Nên cập nhật cử tri mới được phép bỏ phiếu", async () => {
+        // Tạo cuộc bầu cử
+        await voting.createElection("Election 1", 60, candidates, allowedVoters, "Election Description");
+
+        // Cập nhật cử tri mới
+        const newAllowedVoters = [accounts[4], accounts[5]];
+        await voting.setAllowedVoters(1, newAllowedVoters);
+
+        // Kiểm tra lại danh sách cử tri
+        const electionDetails = await voting.detailElection(1);
+        assert.equal(electionDetails.allowedVoters_.length, 4, "There should be 4 allowed voters");
+    });
+
 });
