@@ -4,7 +4,7 @@
 const { buildModule } = require("@nomicfoundation/hardhat-ignition/modules");
 
 const DeployModule = buildModule("Module", (m) => {
-    const votting = m.contract("Vote");
+    const votting = m.contract("Votes");
     return {votting};
 });
 
