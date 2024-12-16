@@ -1,11 +1,13 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.26;
 
-contract Vote {
+contract Votes {
     struct Election {
         string name;
         uint256 endTime;
         string[] candidates;
+        string[] imageUrl;
+        string imageUrlElection;
         mapping(string => uint256) votes;
         mapping(address => bool) hasVoted;
         mapping(address => bool) allowedVoters;
@@ -18,6 +20,13 @@ contract Vote {
     struct CandidateVotes {
         string name;
         uint256 votes;
+        string imageUrl;
+    }
+
+    struct dataElection {
+        uint256 idElection;
+        string name;
+        string imageUrlElection;
     }
 
     address public owner;
@@ -44,6 +53,8 @@ contract Vote {
         string memory name,
         uint256 durationInMinutes,
         string[] memory candidates,
+        string[] memory imageUrl,
+        string memory imageUrlElection,
         address[] memory allowedVoters,
         string memory _describe
     ) public onlyOwner {
@@ -60,6 +71,8 @@ contract Vote {
         newElection.endTime = block.timestamp + durationInMinutes * 1 minutes;
         newElection.exists = true;
         newElection.candidates = candidates;
+        newElection.imageUrl = imageUrl;
+        newElection.imageUrlElection = imageUrlElection;
         newElection.describe = _describe;
 
         for (uint256 i = 0; i < allowedVoters.length; i++) {
@@ -111,12 +124,16 @@ contract Vote {
         return true;
     }
 
-    function getAllElectionNames() public view returns (string[] memory) {
-        string[] memory names = new string[](electionIDs.length);
+    function getAllElectionNames() public view returns (dataElection[] memory) {
+        dataElection[] memory dataElectionn = new dataElection[](electionIDs.length);
         for (uint256 i = 0; i < electionIDs.length; i++) {
-            names[i] = elections[electionIDs[i]].name;
+            dataElectionn[i] = dataElection({
+                idElection: electionIDs[i],
+                name: elections[electionIDs[i]].name,
+                imageUrlElection: elections[electionIDs[i]].imageUrlElection
+            });
         }
-        return names;
+        return dataElectionn;
     }
 
     function deleteElection(
@@ -222,7 +239,8 @@ contract Vote {
         for (uint256 i = 0; i < election.candidates.length; i++) {
             candidatesWithVotes[i] = CandidateVotes({
                 name: election.candidates[i],
-                votes: election.votes[election.candidates[i]]
+                votes: election.votes[election.candidates[i]],
+                imageUrl: election.imageUrl[i]
             });
         }
 
@@ -240,12 +258,16 @@ contract Vote {
             uint256 endTime_,
             string[] memory candidates_,
             address[] memory allowedVoters_,
+            string[] memory imageUrl,
+            string memory imageUrlElection,
             string memory describe_
         )
     {
         name_ = elections[electionId].name;
         endTime_ = elections[electionId].endTime;
         candidates_ = elections[electionId].candidates;
+        imageUrl = elections[electionId].imageUrl;
+        imageUrlElection = elections[electionId].imageUrlElection;
         describe_ = elections[electionId].describe;
         allowedVoters_ = elections[electionId].allowedVotersArray;
     }
