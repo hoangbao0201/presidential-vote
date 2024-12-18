@@ -24,12 +24,21 @@ const HomeTemplate = () => {
                 const signer = await ethersProvider.getSigner();
                 const currentAccount = await signer.getAddress();
 
-                await signIn("login-with-id", {
+                console.log("Địa chỉ ví hiện tại: ", currentAccount);
+
+                const signInResponse = await signIn("login-with-id", {
                     redirect: false,
                     id: currentAccount,
                 });
 
-                await new Promise((resolve) => setTimeout(resolve, 3000));
+                // Kiểm tra xem session đã lưu chưa
+                if (signInResponse?.ok) {
+                    console.log("Đăng nhập thành công");
+                } else {
+                    console.error("Lỗi đăng nhập");
+                }
+
+                await new Promise((resolve) => setTimeout(resolve, 200));
                 setIsLoading(false);
             } else {
                 console.error("MetaMask provider not found.");
