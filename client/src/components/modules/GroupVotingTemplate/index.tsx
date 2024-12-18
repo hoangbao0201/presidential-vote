@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "next-auth/react";
+import { signOut, useSession } from "next-auth/react";
 import { useState, useEffect } from "react";
 import Link from "next/link";
 
@@ -71,8 +71,6 @@ const GroupVotingTemplate = () => {
                 const contract = new ethers.Contract(ContractAddress, ContractABI, signer);
 
                 const elections: any[] = await contract.getAllElectionNames();
-
-                console.log(elections);
 
                 const formattedElections: ElectionData[] = elections.map((election: any) => ({
                     id: Number(election.idElection),

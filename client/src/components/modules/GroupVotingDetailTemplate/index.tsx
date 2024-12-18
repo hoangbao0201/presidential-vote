@@ -5,7 +5,7 @@ import { ethers } from "ethers";
 import detectEthereumProvider from "@metamask/detect-provider";
 import ContractABI from "@/data/abi.contract.json";
 import { useRouter } from "next/navigation";
-import { Toaster, toast } from 'sonner'
+import { Toaster, toast } from "sonner";
 
 const ContractAddress = "0xa68e6ad830078e12949fa966583E965349b6533e";
 
@@ -20,14 +20,16 @@ interface ElectionDetail {
 }
 
 const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
-
-    console.log("id: ", id)
-
     const router = useRouter();
-    const [electionDetail, setElectionDetail] = useState<ElectionDetail | null>(null);
+    const [electionDetail, setElectionDetail] = useState<ElectionDetail | null>(
+        null
+    );
     const [loading, setLoading] = useState(true);
-    const [winner, setWinner] = useState<{ name: string; votes: number } | null>(null);
-
+    const [winner, setWinner] = useState<{
+        name: string;
+        votes: number;
+    } | null>(null);
+    const [timeLeft, setTimeLeft] = useState<number | null>(null);
 
     type candidates = {
         name: string;
@@ -44,7 +46,11 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
             if (provider) {
                 const ethersProvider = new ethers.BrowserProvider(provider);
                 const signer = await ethersProvider.getSigner();
-                const contract = new ethers.Contract(ContractAddress, ContractABI, signer);
+                const contract = new ethers.Contract(
+                    ContractAddress,
+                    ContractABI,
+                    signer
+                );
 
                 // Fetch election details
                 const detail = await contract.detailElection(id);
@@ -60,17 +66,20 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
 
                 // Fetch candidates
                 const candidates: any[] = await contract.getCandidates(id);
-                const formattedCandidate: candidates[] = candidates.map((candidate: any) => ({
-                    name: candidate.name,
-                    votes: Number(candidate.votes),
-                    imageUrl: candidate.imageUrl,
-                }));
+                const formattedCandidate: candidates[] = candidates.map(
+                    (candidate: any) => ({
+                        name: candidate.name,
+                        votes: Number(candidate.votes),
+                        imageUrl: candidate.imageUrl,
+                    })
+                );
                 setAllCandidates(formattedCandidate);
 
                 // Check winner if election ended
                 const currentTime = Math.floor(Date.now() / 1000);
                 if (currentTime > Number(detail[1].toString())) {
-                    const [winnerName, winnerVotes] = await contract.getElectionWinner(id);
+                    const [winnerName, winnerVotes] =
+                        await contract.getElectionWinner(id);
                     setWinner({ name: winnerName, votes: Number(winnerVotes) });
                 }
 
@@ -83,14 +92,17 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
         }
     };
 
-
-    const vote = async (candidate: string) => {
+    const vote = async (candidateName: string) => {
         try {
             const provider: any = await detectEthereumProvider();
             if (provider) {
                 const ethersProvider = new ethers.BrowserProvider(provider);
                 const signer = await ethersProvider.getSigner();
-                const contract = new ethers.Contract(ContractAddress, ContractABI, signer);
+                const contract = new ethers.Contract(
+                    ContractAddress,
+                    ContractABI,
+                    signer
+                );
 
                 const currentTime = Math.floor(Date.now() / 1000); // Lấy thời gian hiện tại (seconds)
                 const endTime = Number(electionDetail?.endTime);
@@ -108,21 +120,24 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                     return;
                 }
 
-                const tx = await contract.vote(id, candidate);
+                const tx = await contract.vote(id, candidateName);
                 await tx.wait(); // Chờ giao dịch hoàn tất
 
-                toast.success("Bình chọn thành công!");
+                setAllCandidates((prevCandidates) =>
+                    prevCandidates.map((candidate) =>
+                        candidate.name === candidateName
+                            ? { ...candidate, votes: candidate.votes + 1 }
+                            : candidate
+                    )
+                );
 
-                await new Promise((resolve) => setTimeout(resolve, 2000));
-                router.refresh();
+                toast.success("Bình chọn thành công!");
             }
         } catch (error) {
             console.error("Error voting:", error);
             toast.error("Bình chọn thất bại. Vui lòng thử lại.");
         }
     };
-
-
 
     useEffect(() => {
         if (id) {
@@ -139,7 +154,9 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                 const endTime = Number(electionDetail.endTime);
 
                 if (currentTime > endTime) {
-                    console.log("Thời gian bầu cử đã kết thúc. Đang reload dữ liệu...");
+                    console.log(
+                        "Thời gian bầu cử đã kết thúc. Đang reload dữ liệu..."
+                    );
                     clearInterval(interval); // Dừng interval khi đã hết thời gian
                     fetchElectionDetail();
                 }
@@ -150,13 +167,44 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
         return () => clearInterval(interval);
     }, [electionDetail, winner]);
 
+    useEffect(() => {
+        if (electionDetail) {
+            const updateCountdown = () => {
+                const currentTime = Math.floor(Date.now() / 1000); // Thời gian hiện tại (giây)
+                const endTime = Number(electionDetail.endTime); // Thời gian kết thúc (giây)
+                const remainingTime = endTime - currentTime; // Thời gian còn lại (giây)
+
+                setTimeLeft(remainingTime > 0 ? remainingTime : 0); // Đảm bảo không có giá trị âm
+            };
+
+            updateCountdown(); // Cập nhật ngay khi component mount
+
+            const interval = setInterval(updateCountdown, 1000); // Cập nhật mỗi giây
+
+            // Cleanup interval khi component bị unmount
+            return () => clearInterval(interval);
+        }
+    }, [electionDetail]);
+
+    const formatTime = (seconds: number) => {
+        const h = Math.floor(seconds / 3600)
+            .toString()
+            .padStart(2, "0");
+        const m = Math.floor((seconds % 3600) / 60)
+            .toString()
+            .padStart(2, "0");
+        const s = (seconds % 60).toString().padStart(2, "0");
+        return `${h}:${m}:${s}`;
+    };
 
     if (loading) {
         return <p className="text-center">Đang tải chi tiết cuộc bầu cử...</p>;
     }
 
     if (!electionDetail) {
-        return <p className="text-center">Dữ liệu cuộc bầu cử không tồn tại.</p>;
+        return (
+            <p className="text-center">Dữ liệu cuộc bầu cử không tồn tại.</p>
+        );
     }
 
     const sortedCandidates = getAllCandidates.sort((a, b) => b.votes - a.votes);
@@ -164,12 +212,33 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
         <div className="flex justify-center items-center min-h-screen">
             <Toaster position="top-right" richColors />
 
+            <div className="text-center mt-4">
+                {timeLeft !== null && timeLeft > 0 ? (
+                    <p className="text-lg font-medium">
+                        ⏳ Thời gian còn lại:{" "}
+                        <span className="font-bold">
+                            {formatTime(timeLeft)}
+                        </span>
+                    </p>
+                ) : (
+                    <p className="text-lg font-medium text-red-600">
+                        ⏳ Cuộc bầu cử đã kết thúc!
+                    </p>
+                )}
+            </div>
+
             <div className="p-8 rounded-xl max-w-4xl w-full border border-gray-700 shadow-lg">
                 {winner && (
                     <div className="text-center mt-8 p-4 border rounded-lg shadow-lg bg-green-600 text-white mb-8">
-                        <h3 className="text-2xl font-bold">🎉 Người chiến thắng 🎉</h3>
-                        <p className="text-lg mt-2">Ứng cử viên: <strong>{winner.name}</strong></p>
-                        <p className="text-lg">Số phiếu bầu: <strong>{winner.votes}</strong></p>
+                        <h3 className="text-2xl font-bold">
+                            🎉 Người chiến thắng 🎉
+                        </h3>
+                        <p className="text-lg mt-2">
+                            Ứng cử viên: <strong>{winner.name}</strong>
+                        </p>
+                        <p className="text-lg">
+                            Số phiếu bầu: <strong>{winner.votes}</strong>
+                        </p>
                     </div>
                 )}
                 <h2 className="text-3xl text-center font-bold uppercase mb-8">
@@ -183,7 +252,9 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                     alt="Ảnh cuộc bầu cử"
                     className="w-full h-64 object-cover rounded-lg mb-4"
                 />
-                <p className="text-lg font-medium mb-6">Danh sách ứng cử viên:</p>
+                <p className="text-lg font-medium mb-6">
+                    Danh sách ứng cử viên:
+                </p>
                 <ul className="space-y-6">
                     {sortedCandidates.map((candidate, index) => (
                         <li
@@ -191,7 +262,9 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                             className="flex items-center justify-between p-4 border rounded-lg shadow-sm hover:shadow-md bg-gray-600"
                         >
                             <div className="-mr-56">
-                                <h2 className="font-bold text-3xl text-cyan-400">{index + 1}</h2>
+                                <h2 className="font-bold text-3xl text-cyan-400">
+                                    {index + 1}
+                                </h2>
                             </div>
                             <div className="flex items-center flex-col">
                                 <p className="font-semibold mr-2">
@@ -203,26 +276,31 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                                     className="w-24 h-24 object-cover rounded-lg mt-2"
                                 />
                                 <p>
-                                    Số lượng phiếu bầu: <span>{candidate.votes}</span>
+                                    Số lượng phiếu bầu:{" "}
+                                    <span>{candidate.votes}</span>
                                 </p>
                             </div>
                             <button
                                 onClick={() => vote(candidate.name)}
-                                className={`self-center py-2 px-8 rounded font-bold ${Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)
-                                    ? "bg-gray-500 cursor-not-allowed"
-                                    : "bg-cyan-600 hover:bg-cyan-400"
-                                    }`}
-                                disabled={Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)}
+                                className={`self-center py-2 px-8 rounded font-bold ${
+                                    Math.floor(Date.now() / 1000) >
+                                    Number(electionDetail?.endTime)
+                                        ? "bg-gray-500 cursor-not-allowed"
+                                        : "bg-cyan-600 hover:bg-cyan-400"
+                                }`}
+                                disabled={
+                                    Math.floor(Date.now() / 1000) >
+                                    Number(electionDetail?.endTime)
+                                }
                             >
-                                {Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)
+                                {Math.floor(Date.now() / 1000) >
+                                Number(electionDetail?.endTime)
                                     ? "Cuộc bầu cử đã kết thúc"
                                     : "Bình chọn"}
                             </button>
                         </li>
                     ))}
                 </ul>
-
-
             </div>
         </div>
     );

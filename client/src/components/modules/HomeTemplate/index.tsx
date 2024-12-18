@@ -24,8 +24,6 @@ const HomeTemplate = () => {
                 const signer = await ethersProvider.getSigner();
                 const currentAccount = await signer.getAddress();
 
-                console.log("Địa chỉ ví hiện tại: ", currentAccount);
-
                 const signInResponse = await signIn("login-with-id", {
                     redirect: false,
                     id: currentAccount,
