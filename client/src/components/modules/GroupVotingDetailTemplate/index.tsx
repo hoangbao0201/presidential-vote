@@ -1,74 +1,230 @@
 "use client";
 
-import Link from "next/link";
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { ethers } from "ethers";
+import detectEthereumProvider from "@metamask/detect-provider";
+import ContractABI from "@/data/abi.contract.json";
 
-const GroupVotingDetailTemplate = () => {
-    const [dataGroupVoting, setDataGroupVoting] = useState({
-        id: "id_group_1",
-        title: "ANIME HAY NHẤT 2024",
-    })
-    const [dataListCandidate, setDataListCandidate] = useState([
-        {
-            id: "id_candidate_1",
-            name: "Ứng cử viên 1",
-            imageUrl: "/static/images/default-avatar.jpg",
-            totalVotes: 4,
-        },
-        {
-            id: "id_candidate_2",
-            name: "Ứng cử viên 2",
-            imageUrl: "/static/images/default-avatar.jpg",
-            totalVotes: 10,
-        },
-    ]);
+import { Toaster, toast } from 'sonner'
+
+const ContractAddress = "0xa68e6ad830078e12949fa966583E965349b6533e";
+
+interface ElectionDetail {
+    name: string;
+    endTime: string;
+    candidates: string[];
+    allowedVoters: string[];
+    imageUrls: string[];
+    imageUrlElection: string;
+    description: string;
+}
+
+const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
+
+    console.log("id: ", id)
+
+    const [electionDetail, setElectionDetail] = useState<ElectionDetail | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [winner, setWinner] = useState<{ name: string; votes: number } | null>(null);
+
+
+    type candidates = {
+        name: string;
+        votes: number;
+        imageUrl: string;
+    };
+
+    const [getAllCandidates, setAllCandidates] = useState<candidates[]>([]);
+
+    const fetchElectionDetail = async () => {
+        try {
+            const provider: any = await detectEthereumProvider();
+
+            if (provider) {
+                const ethersProvider = new ethers.BrowserProvider(provider);
+                const signer = await ethersProvider.getSigner();
+                const contract = new ethers.Contract(ContractAddress, ContractABI, signer);
+
+                // Fetch election details
+                const detail = await contract.detailElection(id);
+                setElectionDetail({
+                    endTime: detail[1].toString(),
+                    name: detail[0],
+                    candidates: detail[2],
+                    allowedVoters: detail[3],
+                    imageUrls: detail[4],
+                    imageUrlElection: detail[5],
+                    description: detail[6],
+                });
+
+                // Fetch candidates
+                const candidates: any[] = await contract.getCandidates(id);
+                const formattedCandidate: candidates[] = candidates.map((candidate: any) => ({
+                    name: candidate.name,
+                    votes: Number(candidate.votes),
+                    imageUrl: candidate.imageUrl,
+                }));
+                setAllCandidates(formattedCandidate);
+
+                // Check winner if election ended
+                const currentTime = Math.floor(Date.now() / 1000);
+                if (currentTime > Number(detail[1].toString())) {
+                    const [winnerName, winnerVotes] = await contract.getElectionWinner(id);
+                    setWinner({ name: winnerName, votes: Number(winnerVotes) });
+                }
+
+                setLoading(false);
+            }
+        } catch (error) {
+            console.error("Error fetching election details:", error);
+            setLoading(false);
+        }
+    };
+
+
+    const vote = async (candidate: string) => {
+        try {
+            const provider: any = await detectEthereumProvider();
+            if (provider) {
+                const ethersProvider = new ethers.BrowserProvider(provider);
+                const signer = await ethersProvider.getSigner();
+                const contract = new ethers.Contract(ContractAddress, ContractABI, signer);
+
+                const currentTime = Math.floor(Date.now() / 1000); // Lấy thời gian hiện tại (seconds)
+                const endTime = Number(electionDetail?.endTime);
+
+                // Kiểm tra xem cuộc bầu cử đã kết thúc chưa
+                if (currentTime > endTime) {
+                    toast.warning("Cuộc bầu cử đã kết thúc.");
+                    return;
+                }
+
+                const userAddress = await signer.getAddress();
+
+                if (!electionDetail?.allowedVoters.includes(userAddress)) {
+                    toast.error("Không nằm trong danh sách được bầu cử");
+                    return;
+                }
+
+                const tx = await contract.vote(id, candidate);
+                await tx.wait(); // Chờ giao dịch hoàn tất
+
+                toast.success("Bình chọn thành công!");
+
+                // Cập nhật lại danh sách ứng cử viên
+                const candidates = await contract.getCandidates(id);
+                const formattedCandidates = candidates.map((candidate: any) => ({
+                    name: candidate.name,
+                    votes: candidate.votes,
+                    imageUrl: candidate.imageUrl,
+                }));
+                setAllCandidates(formattedCandidates);
+            }
+        } catch (error) {
+            console.error("Error voting:", error);
+            toast.error("Bình chọn thất bại. Vui lòng thử lại.");
+        }
+    };
+
+
+
+    useEffect(() => {
+        if (id) {
+            fetchElectionDetail();
+        }
+    }, [id]);
+
+    useEffect(() => {
+        let interval: NodeJS.Timeout;
+
+        if (electionDetail && !winner) {
+            interval = setInterval(() => {
+                const currentTime = Math.floor(Date.now() / 1000);
+                const endTime = Number(electionDetail.endTime);
+
+                if (currentTime > endTime) {
+                    console.log("Thời gian bầu cử đã kết thúc. Đang reload dữ liệu...");
+                    clearInterval(interval); // Dừng interval khi đã hết thời gian
+                    fetchElectionDetail();
+                }
+            }, 2000);
+        }
+
+        // Cleanup interval khi component unmount
+        return () => clearInterval(interval);
+    }, [electionDetail, winner]);
+
+
+    if (loading) {
+        return <p className="text-center">Đang tải chi tiết cuộc bầu cử...</p>;
+    }
+
+    if (!electionDetail) {
+        return <p className="text-center">Dữ liệu cuộc bầu cử không tồn tại.</p>;
+    }
+
 
     return (
         <div className="flex justify-center items-center min-h-screen">
-            <div className="p-8 rounded-xl max-w-7xl w-full border border-gray-700 shadow-lg">
-                <h2 className="text-3xl text-center font-bold uppercase mb-8">
-                    {dataGroupVoting?.title}
-                </h2>
-                <p className="text-lg font-medium mb-6">
-                    Danh Sách Ứng Cử
-                </p>
-                <ul className="space-y-6">
-                    {dataListCandidate.map((group) => (
-                        <li
-                            key={group.id}
-                            className="flex items-center p-6 border border-gray-700 rounded-lg shadow-sm hover:shadow-md transition-shadow duration-300 bg-gray-50 hover:bg-gray-100"
-                        >
-                            {/* Ứng cử viên hình ảnh */}
-                            <div className="w-24 h-24 flex-shrink-0 overflow-hidden rounded-full">
-                                <img
-                                    src={group.imageUrl}
-                                    alt={group.name}
-                                    className="w-full h-full object-cover"
-                                />
-                            </div>
+            <Toaster position="top-right" richColors />
 
-                            {/* Nội dung */}
-                            {/* Nội dung */}
-                            <div className="ml-6 flex-1">
-                                <h3 className="text-xl font-semibold text-gray-800">
-                                    {group.name}
-                                </h3>
-                                <p className="mt-3 text-gray-700 font-medium">
-                                    Số lượng phiếu bầu: {group.totalVotes}
+            <div className="p-8 rounded-xl max-w-4xl w-full border border-gray-700 shadow-lg">
+                {winner && (
+                    <div className="text-center mt-8 p-4 border rounded-lg shadow-lg bg-green-600 text-white mb-8">
+                        <h3 className="text-2xl font-bold">🎉 Người chiến thắng 🎉</h3>
+                        <p className="text-lg mt-2">Ứng cử viên: <strong>{winner.name}</strong></p>
+                        <p className="text-lg">Số phiếu bầu: <strong>{winner.votes}</strong></p>
+                    </div>
+                )}
+                <h2 className="text-3xl text-center font-bold uppercase mb-8">
+                    {electionDetail.name}
+                </h2>
+                <p className="text-lg mb-4">
+                    Mô tả: {electionDetail.description}
+                </p>
+                <img
+                    src={electionDetail.imageUrlElection}
+                    alt="Ảnh cuộc bầu cử"
+                    className="w-full h-64 object-cover rounded-lg mb-4"
+                />
+                <p className="text-lg font-medium mb-6">Danh sách ứng cử viên:</p>
+                <ul className="space-y-6">
+                    {electionDetail.candidates.map((candidate, index) => (
+                        <li
+                            key={index}
+                            className="flex items-center justify-between p-4 border rounded-lg shadow-sm hover:shadow-md bg-gray-600"
+                        >
+                            <div className="flex items-center flex-col">
+                                <p className="font-semibold mr-2">
+                                    Ứng cử viên: {candidate}
+                                </p>
+                                <img
+                                    src={electionDetail.imageUrls[index] || "../../../../public/static/images/default-avatar.jpg"}
+                                    alt={candidate}
+                                    className="w-24 h-24 object-cover rounded-lg mt-2"
+                                />
+                                <p>
+                                    Số lượng phiếu bầu: <span>{getAllCandidates[index]?.votes || 0}</span>
                                 </p>
                             </div>
-
-                            {/* Nút hành động */}
                             <button
-                                title={`Bình chọn cho ${group.id}`}
+                                onClick={() => vote(candidate)}
+                                className={`self-center py-2 px-8 rounded font-bold ${Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)
+                                    ? "bg-gray-500 cursor-not-allowed"
+                                    : "bg-cyan-600 hover:bg-cyan-400"
+                                    }`}
+                                disabled={Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)}
                             >
-                                <button className="py-2 px-4 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200">
-                                    Tham gia bình chọn
-                                </button>
+                                {Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)
+                                    ? "Cuộc bầu cử đã kết thúc"
+                                    : "Bình chọn"}
                             </button>
+
+
                         </li>
                     ))}
                 </ul>
+
             </div>
         </div>
     );
