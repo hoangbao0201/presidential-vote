@@ -4,7 +4,7 @@ import { useEffect, useState } from "react";
 import { ethers } from "ethers";
 import detectEthereumProvider from "@metamask/detect-provider";
 import ContractABI from "@/data/abi.contract.json";
-
+import { useRouter } from "next/navigation";
 import { Toaster, toast } from 'sonner'
 
 const ContractAddress = "0xa68e6ad830078e12949fa966583E965349b6533e";
@@ -23,6 +23,7 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
 
     console.log("id: ", id)
 
+    const router = useRouter();
     const [electionDetail, setElectionDetail] = useState<ElectionDetail | null>(null);
     const [loading, setLoading] = useState(true);
     const [winner, setWinner] = useState<{ name: string; votes: number } | null>(null);
@@ -48,8 +49,8 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                 // Fetch election details
                 const detail = await contract.detailElection(id);
                 setElectionDetail({
-                    endTime: detail[1].toString(),
                     name: detail[0],
+                    endTime: detail[1].toString(),
                     candidates: detail[2],
                     allowedVoters: detail[3],
                     imageUrls: detail[4],
@@ -77,6 +78,7 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
             }
         } catch (error) {
             console.error("Error fetching election details:", error);
+            toast.error("Không thể tải dữ liệu cuộc bầu cử.");
             setLoading(false);
         }
     };
@@ -111,14 +113,8 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
 
                 toast.success("Bình chọn thành công!");
 
-                // Cập nhật lại danh sách ứng cử viên
-                const candidates = await contract.getCandidates(id);
-                const formattedCandidates = candidates.map((candidate: any) => ({
-                    name: candidate.name,
-                    votes: candidate.votes,
-                    imageUrl: candidate.imageUrl,
-                }));
-                setAllCandidates(formattedCandidates);
+                await new Promise((resolve) => setTimeout(resolve, 2000));
+                router.refresh();
             }
         } catch (error) {
             console.error("Error voting:", error);
@@ -163,7 +159,7 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
         return <p className="text-center">Dữ liệu cuộc bầu cử không tồn tại.</p>;
     }
 
-
+    const sortedCandidates = getAllCandidates.sort((a, b) => b.votes - a.votes);
     return (
         <div className="flex justify-center items-center min-h-screen">
             <Toaster position="top-right" richColors />
@@ -189,26 +185,29 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                 />
                 <p className="text-lg font-medium mb-6">Danh sách ứng cử viên:</p>
                 <ul className="space-y-6">
-                    {electionDetail.candidates.map((candidate, index) => (
+                    {sortedCandidates.map((candidate, index) => (
                         <li
                             key={index}
                             className="flex items-center justify-between p-4 border rounded-lg shadow-sm hover:shadow-md bg-gray-600"
                         >
+                            <div className="-mr-56">
+                                <h2 className="font-bold text-3xl text-cyan-400">{index + 1}</h2>
+                            </div>
                             <div className="flex items-center flex-col">
                                 <p className="font-semibold mr-2">
-                                    Ứng cử viên: {candidate}
+                                    Ứng cử viên: {candidate.name}
                                 </p>
                                 <img
-                                    src={electionDetail.imageUrls[index] || "../../../../public/static/images/default-avatar.jpg"}
-                                    alt={candidate}
+                                    src={candidate.imageUrl}
+                                    alt={candidate.name}
                                     className="w-24 h-24 object-cover rounded-lg mt-2"
                                 />
                                 <p>
-                                    Số lượng phiếu bầu: <span>{getAllCandidates[index]?.votes || 0}</span>
+                                    Số lượng phiếu bầu: <span>{candidate.votes}</span>
                                 </p>
                             </div>
                             <button
-                                onClick={() => vote(candidate)}
+                                onClick={() => vote(candidate.name)}
                                 className={`self-center py-2 px-8 rounded font-bold ${Math.floor(Date.now() / 1000) > Number(electionDetail?.endTime)
                                     ? "bg-gray-500 cursor-not-allowed"
                                     : "bg-cyan-600 hover:bg-cyan-400"
@@ -219,11 +218,10 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                                     ? "Cuộc bầu cử đã kết thúc"
                                     : "Bình chọn"}
                             </button>
-
-
                         </li>
                     ))}
                 </ul>
+
 
             </div>
         </div>
