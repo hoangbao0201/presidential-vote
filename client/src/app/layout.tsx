@@ -19,8 +19,11 @@ export default function RootLayout({
     return (
         <html lang="en">
             <body className={`${inter.className} text-[#EAECEF] bg-[#202328]`}>
-                <ProviderLayout>{children}</ProviderLayout>
+                <div className="relative bg-custom-image bg-no-repeat bg-center bg-cover bg-fixed">
+                    <div className="absolute inset-0 bg-gradient-to-r from-black/70 to-black/30"></div>
+                    <ProviderLayout>{children}</ProviderLayout>
+                </div>
             </body>
-        </html> //bg-[#202328]
+        </html>
     );
 }

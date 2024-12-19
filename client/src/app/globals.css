@@ -7,7 +7,6 @@
     height: 5px;
     width: 3px;
     transform-origin: top;
-    background-color: #202630;
     animation: jumb-scaleY 1.5s linear infinite;
 }
 

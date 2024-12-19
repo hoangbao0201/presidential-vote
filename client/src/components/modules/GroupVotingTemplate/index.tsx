@@ -9,6 +9,7 @@ import detectEthereumProvider from "@metamask/detect-provider";
 import ContractABI from "@/data/abi.contract.json"
 
 import { Toaster, toast } from 'sonner'
+import LoadingSpinner from "@/components/share/LoadingSpinner";
 
 const ContractAddress = "0xa68e6ad830078e12949fa966583E965349b6533e";
 
@@ -17,6 +18,13 @@ const GroupVotingTemplate = () => {
     const [isOwner, setIsOwner] = useState(false);
 
     const [loading, setLoading] = useState(true);
+
+    const [isModalOpen, setIsModalOpen] = useState(false);
+
+    const [isLoading, setIsLoading] = useState(false);
+
+
+    const [electionToDelete, setElectionToDelete] = useState<number | null>(null); // State lưu id cuộc bầu cử cần xóa
 
     type ElectionData = {
         id: number;
@@ -92,8 +100,16 @@ const GroupVotingTemplate = () => {
 
 
     const deleteElectionHandler = async (electionId: number) => {
-        const isConfirmed = window.confirm("Bạn chắc chắn muốn xóa cuộc bình chọn này?");
-        if (!isConfirmed) return;
+        // Hiển thị modal khi nhấn "Xóa"
+        setElectionToDelete(electionId);
+        setIsModalOpen(true);
+    };
+
+    const confirmDelete = async () => {
+        // Gọi hàm xóa cuộc bầu cử
+        if (!electionToDelete) return;
+
+        setIsLoading(true);
 
         try {
             const provider: any = await detectEthereumProvider();
@@ -102,26 +118,33 @@ const GroupVotingTemplate = () => {
                 const signer = await ethersProvider.getSigner();
                 const contract = new ethers.Contract(ContractAddress, ContractABI, signer);
 
-                const transaction = await contract.deleteElection(electionId);
+                const transaction = await contract.deleteElection(electionToDelete);
                 await transaction.wait();  // Chờ giao dịch được khai thác
+
+                setIsLoading(false);
                 toast.success("Xóa cuộc bầu cử thành công!");
 
+                // Cập nhật lại danh sách cuộc bầu cử sau khi xóa
                 const elections: any[] = await contract.getAllElectionNames();
-
-                const formattedElections: ElectionData[] = elections.map((election: any) => ({
+                const formattedElections = elections.map((election: any) => ({
                     id: Number(election.idElection),
                     name: election.name,
                     imageUrlElection: election.imageUrlElection,
                 }));
-
+                // Cập nhật state với danh sách bầu cử mới
                 setAllElection(formattedElections);
+                setIsModalOpen(false);
             }
         } catch (error) {
-            console.error("Xóa cuộc bầu cử thất bại:", error);
+            setIsLoading(false);
+            console.error("Lỗi khi xóa cuộc bầu cử", error);
             toast.error("Lỗi khi xóa cuộc bầu cử.");
+            setIsModalOpen(false);
         }
+    };
 
-
+    const cancelDelete = () => {
+        setIsModalOpen(false);
     };
 
 
@@ -131,10 +154,40 @@ const GroupVotingTemplate = () => {
 
     return (
         <div className="flex justify-center items-center min-h-screen">
+            {/* Modal Confirmation */}
+            {isModalOpen && (
+                <div className="fixed inset-0 bg-black bg-opacity-50 backdrop-blur-md flex justify-center items-center z-20">
+                    <div className="bg-slate-800 p-6 rounded-lg shadow-lg max-w-sm w-full">
+                        <h3 className="text-xl font-semibold mb-4 text-center">Bạn chắc chắn muốn xóa cuộc bầu cử này?</h3>
+                        <div className="flex justify-center items-center">
+                            
+                            {isLoading ? (
+                                <div className="bg-green-500 py-2 px-4 rounded-lg">
+                                    <LoadingSpinner fill="#ffff" />
+                                </div>
+                            ) : (
+                                <>
+                                    <button
+                                        onClick={confirmDelete}
+                                        className="bg-green-500 text-white py-2 px-4 rounded-lg hover:bg-green-600 transition duration-200 mr-16">
+                                        Yes
+                                    </button>
+                                    <button
+                                        onClick={cancelDelete}
+                                        className="bg-red-500 text-white py-2 px-4 rounded-lg hover:bg-red-600 transition duration-200">
+                                        No
+                                    </button>
+                                </>
+
+                            )}
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <Toaster position="top-right" richColors />
 
-            <div className="p-8 rounded-xl max-w-5xl w-full border border-gray-700 shadow-lg">
+            <div className="p-8 rounded-xl max-w-5xl w-full border border-gray-700 mt-16 bg-black bg-opacity-65 shadow-xl z-10 backdrop-blur-sm">
                 <h2 className="text-2xl text-center font-bold uppercase mb-6">Danh Sách Nhóm Bình Chọn</h2>
 
                 {session?.user?.id && (
@@ -157,20 +210,21 @@ const GroupVotingTemplate = () => {
                     </div>
                 )}
 
+                {/* <LoadingSpinner fill="#ffff"/> */}
                 {loading ? (
                     <p className="text-center">Đang tải danh sách cuộc bầu cử...</p>
                 ) : (
-                    <ul className="space-y-4">
+                    <ul className="space-y-4 rounded-lg bg-opacity-70 backdrop-blur-sm">
                         {getAllElection.map((election) => (
-                            <li key={election.id} className="p-4 border border-gray-700 rounded-lg transition duration-300 flex justify-between items-center">
+                            <li key={election.id} className="p-4 border bg-slate-800 bg-opacity-70 backdrop-blur-sm border-gray-700 rounded-lg transition duration-300 flex justify-between items-center">
 
-                                <div>
+                                <div className="w-2/3">
                                     <h3 className="text-lg font-semibold">{election.name}</h3>
-                                    <p className="text-[#b7bdc6]">Mô tả: {election.id}</p>
+                                    {/* <p className="text-[#b7bdc6]">Mô tả: {election.id}</p> */}
                                     <img
-                                        src={election.imageUrlElection}
+                                        src={`https://res.cloudinary.com/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload/` + election.imageUrlElection}
                                         alt={"Ảnh cuộc bầu cử"}
-                                        className="w-full h-32 object-cover rounded-lg mb-2"
+                                        className="w-2/3 h-32 object-contain rounded-lg mb-2"
                                     />
                                 </div>
                                 <div className="flex flex-col items-start">
@@ -199,6 +253,8 @@ const GroupVotingTemplate = () => {
                                             className="opacity-70 mt-2 py-2 px-4 w-60 bg-red-700 text-white rounded-lg hover:bg-red-500 hover:opacity-100 transition duration-200">
                                             Xóa cuộc bình chọn
                                         </button>
+
+
                                     </>)}
                                 </div>
 
