@@ -1,0 +1,33 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+
+.loading-spinner {
+    height: 5px;
+    width: 3px;
+    transform-origin: top;
+    animation: jumb-scaleY 1.5s linear infinite;
+}
+
+@keyframes jumb-scaleY {
+    0% {
+        transform: translateY(0) scaleY(1);
+    }
+    
+    7.5% {
+        transform: translateY(-120%) scaleY(2);
+    }
+    15%, 35% {
+        transform: translateY(-120%) scaleY(.5);
+    }
+    43.5% {
+        transform: translateY(0) scaleY(2);
+    }
+    52.5%, 72.5% {
+        transform: translateY(120%) scaleY(.5);
+    }
+    80%, 100% {
+        transform: translateY(0) scaleY(1);
+    }
+}
