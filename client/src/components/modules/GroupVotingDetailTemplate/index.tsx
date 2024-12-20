@@ -6,6 +6,7 @@ import detectEthereumProvider from "@metamask/detect-provider";
 import ContractABI from "@/data/abi.contract.json";
 import { useRouter } from "next/navigation";
 import { Toaster, toast } from "sonner";
+import LoadingSpinner from "@/components/share/LoadingSpinner";
 
 const ContractAddress = "0xa68e6ad830078e12949fa966583E965349b6533e";
 
@@ -21,6 +22,8 @@ interface ElectionDetail {
 
 const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
     const router = useRouter();
+    const [isLoading, setIsLoading] = useState(false);
+
     const [electionDetail, setElectionDetail] = useState<ElectionDetail | null>(
         null
     );
@@ -93,6 +96,7 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
     };
 
     const vote = async (candidateName: string) => {
+        setIsLoading(true);
         try {
             const provider: any = await detectEthereumProvider();
             if (provider) {
@@ -116,6 +120,8 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                 const userAddress = await signer.getAddress();
 
                 if (!electionDetail?.allowedVoters.includes(userAddress)) {
+                    setIsLoading(false);
+
                     toast.error("Không nằm trong danh sách được bầu cử");
                     return;
                 }
@@ -130,10 +136,12 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
                             : candidate
                     )
                 );
+                setIsLoading(false);
 
                 toast.success("Bình chọn thành công!");
             }
         } catch (error) {
+            setIsLoading(false);
             console.error("Error voting:", error);
             toast.error("Bình chọn thất bại. Vui lòng thử lại.");
         }
@@ -209,101 +217,121 @@ const GroupVotingDetailTemplate = ({ id }: { id: string }) => {
 
     const sortedCandidates = getAllCandidates.sort((a, b) => b.votes - a.votes);
     return (
-        <div className="flex justify-center items-center min-h-screen">
+        <div className="flex justify-center items-center min-h-screen text-white ">
             <Toaster position="top-right" richColors />
 
-            <div className="text-center mt-4">
-                {timeLeft !== null && timeLeft > 0 ? (
-                    <p className="text-lg font-medium">
-                        ⏳ Thời gian còn lại:{" "}
-                        <span className="font-bold">
-                            {formatTime(timeLeft)}
-                        </span>
-                    </p>
-                ) : (
-                    <p className="text-lg font-medium text-red-600">
-                        ⏳ Cuộc bầu cử đã kết thúc!
-                    </p>
-                )}
-            </div>
+            <div className="w-full max-w-5xl p-6">
+                {/* Thời gian */}
 
-            <div className="p-8 rounded-xl max-w-4xl w-full border border-gray-700 shadow-lg">
-                {winner && (
-                    <div className="text-center mt-8 p-4 border rounded-lg shadow-lg bg-green-600 text-white mb-8">
-                        <h3 className="text-2xl font-bold">
-                            🎉 Người chiến thắng 🎉
-                        </h3>
-                        <p className="text-lg mt-2">
-                            Ứng cử viên: <strong>{winner.name}</strong>
-                        </p>
-                        <p className="text-lg">
-                            Số phiếu bầu: <strong>{winner.votes}</strong>
-                        </p>
+
+                {/* Thông tin cuộc bầu cử */}
+                <div className="p-8 w-full rounded-xl mt-16 bg-black bg-opacity-65 shadow-xl z-10 backdrop-blur-sm">
+                    {winner && (
+                        <div className="text-center p-4 mb-8 border rounded-lg shadow-md bg-green-600 text-white">
+                            <h3 className="text-2xl font-bold">
+                                🎉 Người chiến thắng 🎉
+                            </h3>
+                            <p className="text-lg mt-2">
+                                Ứng cử viên: <strong>{winner.name}</strong>
+                            </p>
+                            <p className="text-lg">
+                                Số phiếu bầu: <strong>{winner.votes}</strong>
+                            </p>
+                        </div>
+                    )}
+
+                    <div className="text-center mb-6">
+                        {timeLeft !== null && timeLeft > 0 ? (
+                            <p className="text-lg font-medium">
+                                ⏳ Thời gian còn lại:{" "}
+                                <span className="font-bold">{formatTime(timeLeft)}</span>
+                            </p>
+                        ) : (
+                            <p className="text-lg font-medium text-red-600">
+                                ⏳ Cuộc bầu cử đã kết thúc!
+                            </p>
+                        )}
                     </div>
-                )}
-                <h2 className="text-3xl text-center font-bold uppercase mb-8">
-                    {electionDetail.name}
-                </h2>
-                <p className="text-lg mb-4">
-                    Mô tả: {electionDetail.description}
-                </p>
-                <img
-                    src={electionDetail.imageUrlElection}
-                    alt="Ảnh cuộc bầu cử"
-                    className="w-full h-64 object-cover rounded-lg mb-4"
-                />
-                <p className="text-lg font-medium mb-6">
-                    Danh sách ứng cử viên:
-                </p>
-                <ul className="space-y-6">
-                    {sortedCandidates.map((candidate, index) => (
-                        <li
-                            key={index}
-                            className="flex items-center justify-between p-4 border rounded-lg shadow-sm hover:shadow-md bg-gray-600"
-                        >
-                            <div className="-mr-56">
-                                <h2 className="font-bold text-3xl text-cyan-400">
-                                    {index + 1}
-                                </h2>
-                            </div>
-                            <div className="flex items-center flex-col">
-                                <p className="font-semibold mr-2">
-                                    Ứng cử viên: {candidate.name}
-                                </p>
-                                <img
-                                    src={candidate.imageUrl}
-                                    alt={candidate.name}
-                                    className="w-24 h-24 object-cover rounded-lg mt-2"
-                                />
-                                <p>
-                                    Số lượng phiếu bầu:{" "}
-                                    <span>{candidate.votes}</span>
-                                </p>
-                            </div>
-                            <button
-                                onClick={() => vote(candidate.name)}
-                                className={`self-center py-2 px-8 rounded font-bold ${
-                                    Math.floor(Date.now() / 1000) >
-                                    Number(electionDetail?.endTime)
-                                        ? "bg-gray-500 cursor-not-allowed"
-                                        : "bg-cyan-600 hover:bg-cyan-400"
-                                }`}
-                                disabled={
-                                    Math.floor(Date.now() / 1000) >
-                                    Number(electionDetail?.endTime)
-                                }
+
+                    <h2 className="text-3xl text-center font-bold uppercase mb-6">
+                        {electionDetail.name}
+                    </h2>
+                    <p className="text-lg mb-4">Mô tả: {electionDetail.description}</p>
+
+                    <img
+                        src={`https://res.cloudinary.com/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload/` + electionDetail.imageUrlElection}
+                        alt="Ảnh cuộc bầu cử"
+                        className="w-4/6 h-64 object-contain rounded-lg mb-6 mx-auto"
+                    />
+
+                    <p className="text-lg font-medium mb-6">Danh sách ứng cử viên:</p>
+
+
+                    <ul className="flex flex-col space-y-6">
+                        {sortedCandidates.map((candidate, index) => (
+                            <li
+                                key={index}
+                                className="flex items-center justify-between p-6 border rounded-lg shadow-md bg-slate-800 bg-opacity-70 backdrop-blur-sm hover:shadow-lg "
                             >
-                                {Math.floor(Date.now() / 1000) >
-                                Number(electionDetail?.endTime)
-                                    ? "Cuộc bầu cử đã kết thúc"
-                                    : "Bình chọn"}
-                            </button>
-                        </li>
-                    ))}
-                </ul>
+
+                                <div className="text-center w-16">
+                                    <h2 className="text-3xl font-bold text-cyan-400">
+                                        {index + 1}
+                                    </h2>
+                                </div>
+
+
+                                <div className="flex-1 px-4">
+                                    <h3 className="text-xl font-semibold mb-2">
+                                        {candidate.name}
+                                    </h3>
+                                    <img
+                                        src={`https://res.cloudinary.com/${process.env.NEXT_PUBLIC_CLOUDINARY_CLOUD_NAME}/image/upload/` + candidate.imageUrl}
+                                        alt={candidate.name}
+                                        className="w-24 h-24 object-cover rounded-lg mb-2"
+                                    />
+                                    <p className="text-lg">
+                                        Số lượng phiếu bầu:{" "}
+                                        <strong>{candidate.votes}</strong>
+                                    </p>
+                                </div>
+
+
+                                <div className="flex-shrink-0">
+                                    <button
+                                        onClick={() => vote(candidate.name)}
+                                        className={`py-2 px-6 rounded font-bold text-white ${Math.floor(Date.now() / 1000) >
+                                            Number(electionDetail?.endTime)
+                                            ? "bg-gray-500 cursor-not-allowed"
+                                            : "bg-cyan-600 hover:bg-cyan-400"
+                                            }`}
+                                        disabled={
+                                            Math.floor(Date.now() / 1000) >
+                                            Number(electionDetail?.endTime)
+                                        }
+                                    >
+                                        {isLoading ? (
+                                            <LoadingSpinner />
+                                        ) : (
+                                            <>
+                                                {Math.floor(Date.now() / 1000) >
+                                                    Number(electionDetail?.endTime)
+                                                    ? "Cuộc bầu cử đã kết thúc"
+                                                    : "Bình chọn"}
+                                            </>
+                                        )}
+                                    </button>
+
+                                </div>
+                            </li>
+                        ))}
+                    </ul>
+                </div>
             </div>
         </div>
     );
+
+
 };
 
 export default GroupVotingDetailTemplate;

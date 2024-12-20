@@ -7,7 +7,7 @@ import { ethers } from "ethers";
 import ContractABI from "@/data/abi.contract.json";
 import detectEthereumProvider from "@metamask/detect-provider";
 import { useRouter } from "next/navigation";
-
+import LoadingSpinner from "@/components/share/LoadingSpinner";
 import { Toaster, toast } from "sonner";
 
 type ElectionData = {
@@ -26,9 +26,15 @@ const CreateElectionPage = () => {
     const { data: session } = useSession();
     const [isAdmin, setIsAdmin] = useState(false);
 
-    const [file, setFile] = useState<File | null>(null);
-    const [uploading, setUploading] = useState(false);
-    const [imageUrl, setImageUrl] = useState<string | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+
+    const [files, setFiles] = useState<{
+        fileDataImageGroupVote: File | null,
+        fileDataImageCadidate: Record<string, File> | null,
+    }>({
+        fileDataImageGroupVote: null,
+        fileDataImageCadidate: {},
+    });
 
     const [electionData, setElectionData] = useState<ElectionData>({
         name: "",
@@ -42,54 +48,130 @@ const CreateElectionPage = () => {
 
     const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
         if (event.target.files && event.target.files[0]) {
-            setFile(event.target.files[0]);
+            return event.target.files[0];
         }
     };
 
-    const handleUpload = async () => {
+    const handleUpload = async (file: File): Promise<string | null> => {
         if (!file) {
             alert("Please select an image file first.");
-            return;
+            return null;
         }
 
-        setUploading(true);
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = async (event) => {
+                const base64 = event.target?.result;
+                if (base64) {
+                    try {
+                        const response = await fetch("/api/upload/image", {
+                            method: "POST",
+                            headers: {
+                                "Content-Type": "application/json",
+                            },
+                            body: JSON.stringify({ file: base64 }),
+                        });
 
-        // Convert file to Base64
-        const reader = new FileReader();
-        reader.readAsDataURL(file);
+                        const data = await response.json();
 
-        reader.onload = async () => {
-            const base64 = reader.result;
-
-            try {
-                const response = await fetch("/api/upload/image", {
-                    method: "POST",
-                    headers: {
-                        "Content-Type": "application/json",
-                    },
-                    body: JSON.stringify({ file: base64 }),
-                });
-
-                const data = await response.json();
-
-                if (response.ok) {
-                    setImageUrl(data.url);
-                    alert("Image uploaded successfully!");
+                        if (response.ok) {
+                            resolve(data.url);
+                        } else {
+                            reject("Upload failed.");
+                        }
+                    } catch (error) {
+                        reject(error);
+                    }
                 } else {
-                    alert(`Upload failed: ${data.error || "Unknown error"}`);
+                    reject("Failed to read file.");
                 }
-            } catch (error) {
-                console.error("Error uploading image:", error);
-                alert("An unexpected error occurred.");
-            } finally {
-                setUploading(false);
-            }
-        };
+            };
 
-        reader.onerror = () => {
-            alert("Failed to read file.");
-            setUploading(false);
-        };
+            reader.onerror = (error) => reject(error);
+            reader.readAsDataURL(file);
+        });
+    };
+
+    const handleCreateElection = async () => {
+        setIsLoading(true);
+        try {
+            const provider: any = await detectEthereumProvider();
+
+            if (provider) {
+                const ethersProvider = new ethers.BrowserProvider(provider);
+                const signer = await ethersProvider.getSigner();
+
+                const contract = new ethers.Contract(
+                    process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string,
+                    ContractABI,
+                    signer
+                );
+
+                const uploadedImageUrlElection = files.fileDataImageGroupVote
+                    ? await handleUpload(files.fileDataImageGroupVote)
+                    : null;
+                if (!uploadedImageUrlElection) {
+                    toast.error("Failed to upload the election image.");
+                    return;
+                }
+
+                let uploadedImageUrlsCandidates: Record<string, string> = {};
+                if (files.fileDataImageCadidate) {
+                    for (const [candidateId, file] of Object.entries(
+                        files.fileDataImageCadidate
+                    )) {
+                        const uploadedUrl = await handleUpload(file);
+                        if (uploadedUrl) {
+                            uploadedImageUrlsCandidates[candidateId] = uploadedUrl;
+                        } else {
+                            toast.error(`Failed to upload image for candidate ${candidateId}`);
+                        }
+                    }
+                }
+
+                // Gọi hàm createElection từ hợp đồng
+                const tx = await contract.createElection(
+                    electionData.name,
+                    electionData.durationInMinutes,
+                    electionData.candidates,
+                    Object.entries(uploadedImageUrlsCandidates).map(([key, value]) => value),
+                    uploadedImageUrlElection,
+                    electionData.allowedVoters,
+                    electionData.describe
+                );
+
+                console.log("Giao dịch đã được gửi, chờ xác nhận...");
+                // Đợi giao dịch được xác nhận
+                await tx.wait();
+                console.log("Giao dịch đã được xác nhận!");
+
+                setIsLoading(false);
+
+                toast.success("Cuộc bầu cử đã được tạo thành công!");
+
+                await new Promise((resolve) => setTimeout(resolve, 5000));
+                router.push("/hoi-nhom-binh-chon");
+            }
+        } catch (error: any) {
+            console.error("Lỗi khi tạo cuộc bầu cử:", error);
+
+            if (error.code) {
+                console.log("Mã lỗi:", error.code);
+            }
+
+            // Kiểm tra lỗi cụ thể từ error.message hoặc error.code
+            if (error.code === "NETWORK_ERROR") {
+                toast.error("Lỗi mạng: Không thể kết nối tới mạng Ethereum.");
+            } else if (error.code === "INSUFFICIENT_FUNDS") {
+                toast.error("Không đủ ETH để thực hiện giao dịch.");
+            } else if (error.data?.message) {
+                toast.error(`Lỗi từ hợp đồng: ${error.data.message}`);
+            } else {
+                toast.error(
+                    "Có lỗi xảy ra khi tạo cuộc bầu cử. Vui lòng thử lại."
+                );
+            }
+        }
     };
 
     useEffect(() => {
@@ -132,85 +214,13 @@ const CreateElectionPage = () => {
         checkIfAdmin();
     }, [session]);
 
-    const handleCreateElection = async () => {
-        try {
-            const provider: any = await detectEthereumProvider();
-
-            if (provider) {
-                const ethersProvider = new ethers.BrowserProvider(provider);
-                const signer = await ethersProvider.getSigner();
-
-                console.log(signer);
-                const contract = new ethers.Contract(
-                    process.env.NEXT_PUBLIC_CONTRACT_ADDRESS as string,
-                    ContractABI,
-                    signer
-                );
-
-                console.log("Đang gọi hàm createElection...");
-                // Gọi hàm createElection từ hợp đồng
-                const tx = await contract.createElection(
-                    electionData.name,
-                    electionData.durationInMinutes,
-                    electionData.candidates,
-                    electionData.imageUrl,
-                    electionData.imageUrlElection,
-                    electionData.allowedVoters,
-                    electionData.describe
-                );
-
-                console.log("Giao dịch đã được gửi, chờ xác nhận...");
-                // Đợi giao dịch được xác nhận
-                await tx.wait();
-                console.log("Giao dịch đã được xác nhận!");
-
-                toast.success("Cuộc bầu cử đã được tạo thành công!");
-
-                await new Promise((resolve) => setTimeout(resolve, 5000));
-                router.push("/hoi-nhom-binh-chon");
-            }
-        } catch (error: any) {
-            console.error("Lỗi khi tạo cuộc bầu cử:", error);
-
-            if (error.code) {
-                console.log("Mã lỗi:", error.code);
-            }
-
-            // Kiểm tra lỗi cụ thể từ error.message hoặc error.code
-            if (error.code === "NETWORK_ERROR") {
-                toast.error("Lỗi mạng: Không thể kết nối tới mạng Ethereum.");
-            } else if (error.code === "INSUFFICIENT_FUNDS") {
-                toast.error("Không đủ ETH để thực hiện giao dịch.");
-            } else if (error.data?.message) {
-                toast.error(`Lỗi từ hợp đồng: ${error.data.message}`);
-            } else {
-                toast.error(
-                    "Có lỗi xảy ra khi tạo cuộc bầu cử. Vui lòng thử lại."
-                );
-            }
-        }
-    };
+    console.log("files: ", files)
 
     return (
         <div className="flex justify-center items-center min-h-screen">
-            <input type="file" accept="image/*" onChange={handleFileChange} />
-            <button onClick={handleUpload} disabled={uploading}>
-                {uploading ? "Uploading..." : "Upload"}
-            </button>
-            {imageUrl && (
-                <div>
-                    <h2>Uploaded Image:</h2>
-                    <img
-                        src={imageUrl}
-                        alt="Uploaded"
-                        style={{ maxWidth: "100%" }}
-                    />
-                </div>
-            )}
-
             <Toaster position="top-right" richColors />
 
-            <div className="p-8 rounded-xl max-w-2xl w-full border border-gray-700 shadow-lg">
+            <div className="mt-16 p-8 rounded-xl max-w-2xl w-full border border-gray-700 bg-black bg-opacity-65 shadow-xl z-10 backdrop-blur-sm">
                 <h2 className="text-2xl text-center font-bold uppercase mb-6">
                     Tạo Cuộc Bầu Cử
                 </h2>
@@ -281,18 +291,37 @@ const CreateElectionPage = () => {
                             <div className="mt-2">
                                 {electionData.candidates.map(
                                     (candidate, index) => (
-                                        <span
+                                        <div
                                             key={index}
                                             className="linline-block mr-2 bg-gray-400 p-1 rounded text-black overflow-x-auto whitespace-nowrap"
                                         >
-                                            {candidate}
-                                        </span>
+                                            <div>{candidate}</div>
+
+                                            <input
+                                                type="file"
+                                                accept="image/*"
+                                                className="mt-2 p-2 border rounded-md w-full text-black"
+                                                value={electionData.imageUrlElection}
+                                                onChange={async (e) => {
+                                                    const file = handleFileChange(e);
+                                                    if (file) {
+                                                        setFiles(state => ({
+                                                            ...state,
+                                                            fileDataImageCadidate: {
+                                                                ...state.fileDataImageCadidate,
+                                                                [candidate]: file,
+                                                            },
+                                                        }))
+                                                    }
+                                                }}
+                                            />
+                                        </div>
                                     )
                                 )}
                             </div>
                         </div>
 
-                        <div className="mb-4">
+                        {/* <div className="mb-4">
                             <label className="block text-sm font-semibold">
                                 URL ảnh ứng cử viên
                             </label>
@@ -320,16 +349,17 @@ const CreateElectionPage = () => {
                             <div className="mt-2">
                                 {electionData.imageUrl.map(
                                     (imageUrl, index) => (
-                                        <span
+                                        <div
                                             key={index}
                                             className="block mr-2 bg-gray-400 p-1 rounded text-black overflow-hidden whitespace-nowrap w-full mb-1"
                                         >
-                                            {imageUrl}
-                                        </span>
+                                            <div>{imageUrl}</div>
+                                            
+                                        </div>
                                     )
                                 )}
                             </div>
-                        </div>
+                        </div> */}
 
                         <div className="mb-4">
                             <label className="block text-sm font-semibold">
@@ -376,15 +406,19 @@ const CreateElectionPage = () => {
                                 URL ảnh cuộc bầu cử
                             </label>
                             <input
-                                type="text"
-                                className="mt-2 p-2 border rounded-md w-full text-black"
+                                type="file"
+                                accept="image/*"
+                                className="mt-2 p-2 border rounded-md w-full text-white"
                                 value={electionData.imageUrlElection}
-                                onChange={(e) =>
-                                    setElectionData({
-                                        ...electionData,
-                                        imageUrlElection: e.target.value,
-                                    })
-                                }
+                                onChange={async (e) => {
+                                    const file = handleFileChange(e);
+                                    if (file) {
+                                        setFiles(state => ({
+                                            ...state,
+                                            fileDataImageGroupVote: file,
+                                        }))
+                                    }
+                                }}
                             />
                         </div>
 
@@ -408,7 +442,15 @@ const CreateElectionPage = () => {
                             onClick={handleCreateElection}
                             className="mt-4 py-2 px-10 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition duration-200 ml-[50%] translate-x-[-50%]"
                         >
-                            Tạo cuộc bầu cử
+
+                            {isLoading ? (
+                                <LoadingSpinner />
+                            ) : (
+                                <>
+                                    <span>Tạo cuộc bầu cử</span>
+                                </>
+                            )}
+                            
                         </button>
                     </div>
                 ) : (
@@ -422,3 +464,7 @@ const CreateElectionPage = () => {
 };
 
 export default CreateElectionPage;
+
+
+
+

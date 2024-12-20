@@ -36,13 +36,12 @@ const HomeTemplate = () => {
                     console.error("Lỗi đăng nhập");
                 }
 
-                await new Promise((resolve) => setTimeout(resolve, 200));
-                setIsLoading(false);
+                await new Promise((resolve) => setTimeout(resolve, 2000));
             } else {
                 console.error("MetaMask provider not found.");
             }
-            router.push("/hoi-nhom-binh-chon");
             setIsLoading(false);
+            router.push("/hoi-nhom-binh-chon");
         } catch (error: any) {
             console.error("Failed to initialize contract:", error?.message);
             setIsLoading(false);
@@ -50,14 +49,14 @@ const HomeTemplate = () => {
     };
     return (
         <div className="flex justify-center items-center min-h-screen">
-            <div className="p-8 rounded-xl max-w-md w-full border border-gray-700">
+            <div className="p-8 rounded-xl max-w-md w-full border border-gray-700 bg-black bg-opacity-50 shadow-xl z-10 backdrop-blur-sm">
                 <h2 className="text-2xl text-center font-bold mb-6">
                     ĐĂNG NHẬP
                 </h2>
                 <div className="space-y-4">
                     <button
                         onClick={handleConnectMetamask}
-                        className="w-full space-x-2 flex items-center justify-center text-black bg-white hover:bg-gray-100 font-semibold py-3 rounded-xl transition duration-300"
+                        className="w-full space-x-2 flex items-center justify-center text-black bg-white hover:bg-gray-500 hover:cursor-pointer font-semibold py-3 rounded-xl transition duration-300"
                     >
                         {isLoading ? (
                             <LoadingSpinner />
